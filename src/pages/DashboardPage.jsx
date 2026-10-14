@@ -196,7 +196,11 @@ function generateDashboardData(dateRange, shift, area, customThresholds, activeC
   };
 }
 
-export default function DashboardPage({ areas = [] }) {
+export default function DashboardPage({
+  areas = [],
+  thresholds = [],
+  onUpdateThresholds
+}) {
   const [selectedShift, setSelectedShift] = useState('Shift 1');
   const [dateRange, setDateRange] = useState([
     dayjs(),
@@ -216,13 +220,21 @@ export default function DashboardPage({ areas = [] }) {
   // Tabs: ONLY Ampere & Welding Time
   const [activeParameterTab, setActiveParameterTab] = useState('Ampere');
 
-  // Custom thresholds for Ampere and Welding Time
-  const [customThresholds, setCustomThresholds] = useState({
-    Ampere: 70,
-    'Welding Time': 1000
-  });
+  // Synchronized thresholds map from global database setting
+  const currentThresholdsMap = useMemo(() => {
+    const map = { Ampere: 20, 'Welding Time': 1000 };
+    if (Array.isArray(thresholds)) {
+      thresholds.forEach((t) => {
+        if (t.parameter && t.maxValue !== undefined) {
+          map[t.parameter] = Number(t.maxValue);
+        }
+      });
+    }
+    return map;
+  }, [thresholds]);
+
   const [showThresholdModal, setShowThresholdModal] = useState(false);
-  const [tempThreshold, setTempThreshold] = useState(70);
+  const [tempThreshold, setTempThreshold] = useState(20);
 
   // OEE Target Modal states
   const [showTargetModal, setShowTargetModal] = useState(false);
@@ -243,10 +255,10 @@ export default function DashboardPage({ areas = [] }) {
     return () => clearInterval(timer);
   }, [isLiveActive]);
 
-  // Dynamic Dashboard Data synchronized with Date Range, Shift, Area, Thresholds, and Realtime Cycle
+  // Dynamic Dashboard Data synchronized with Date Range, Shift, Area, Database Thresholds, and Realtime Cycle
   const shiftData = useMemo(() => {
-    return generateDashboardData(dateRange, selectedShift, selectedArea, customThresholds, activeCycle);
-  }, [dateRange, selectedShift, selectedArea, customThresholds, activeCycle]);
+    return generateDashboardData(dateRange, selectedShift, selectedArea, currentThresholdsMap, activeCycle);
+  }, [dateRange, selectedShift, selectedArea, currentThresholdsMap, activeCycle]);
 
   // Dynamic Y-axis scale strictly matching the current Plan peak so it's never too far above
   const prodYScale = useMemo(() => {
@@ -269,7 +281,7 @@ export default function DashboardPage({ areas = [] }) {
   }, [shiftData.productionGraph]);
 
   const currentParam = shiftData.parameterTrends[activeParameterTab] || shiftData.parameterTrends['Ampere'];
-  const currentThreshold = customThresholds[activeParameterTab] ?? currentParam.threshold;
+  const currentThreshold = currentThresholdsMap[activeParameterTab] ?? currentParam.threshold;
 
   // 1. Parameter Trend Chart Data (Matching Figma & OEE style)
   const parameterChartData = {
@@ -682,7 +694,7 @@ export default function DashboardPage({ areas = [] }) {
     }
   };
 
-  // Save Threshold Handler
+  // Save Threshold Handler (Synchronized across Dashboard & Setting Threshold page)
   const handleSaveThreshold = (e) => {
     e.preventDefault();
     const val = Number(tempThreshold);
@@ -694,10 +706,30 @@ export default function DashboardPage({ areas = [] }) {
       });
       return;
     }
-    setCustomThresholds((prev) => ({
-      ...prev,
-      [activeParameterTab]: val
-    }));
+
+    if (onUpdateThresholds && Array.isArray(thresholds)) {
+      const existingIndex = thresholds.findIndex((t) => t.parameter === activeParameterTab);
+      if (existingIndex >= 0) {
+        onUpdateThresholds(
+          thresholds.map((t, idx) =>
+            idx === existingIndex
+              ? { ...t, maxValue: val, datetime: dayjs().format('DD/MM/YYYY HH:mm') }
+              : t
+          )
+        );
+      } else {
+        onUpdateThresholds([
+          {
+            id: Date.now(),
+            parameter: activeParameterTab,
+            maxValue: val,
+            datetime: dayjs().format('DD/MM/YYYY HH:mm')
+          },
+          ...thresholds
+        ]);
+      }
+    }
+
     setShowThresholdModal(false);
     setToast({
       type: 'success',

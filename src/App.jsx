@@ -61,7 +61,13 @@ export default function App() {
       unreadCount={unreadCount}
     >
       {/* APPLICATION PAGES */}
-      {activeMenu === 'dashboard' && <DashboardPage areas={areas} />}
+      {activeMenu === 'dashboard' && (
+        <DashboardPage
+          areas={areas}
+          thresholds={thresholds}
+          onUpdateThresholds={setThresholds}
+        />
+      )}
 
       {activeMenu === 'planning-production' && (
         <PlanningProductionPage />
