@@ -29,7 +29,7 @@ import {
   SHIFT_OPTIONS,
   AREA_OPTIONS,
   WELDING_DASHBOARD_CONFIG,
-  REALTIME_CYCLES_10
+  REALTIME_CYCLES_BY_SHIFT
 } from '../data/mockData';
 
 // Register Chart.js components
@@ -49,7 +49,8 @@ ChartJS.register(
 // Function to generate dynamic dashboard data strictly synchronized with the selected Date Range and 10 Realtime Cycles
 function generateDashboardData(dateRange, shift, area, customThresholds, activeCycleIndex = 0) {
   const shiftConfig = WELDING_DASHBOARD_CONFIG[shift] || WELDING_DASHBOARD_CONFIG['Shift 1'];
-  const liveCycle = REALTIME_CYCLES_10[activeCycleIndex % REALTIME_CYCLES_10.length];
+  const shiftCycles = REALTIME_CYCLES_BY_SHIFT[shift] || REALTIME_CYCLES_BY_SHIFT['Shift 1'];
+  const liveCycle = shiftCycles[activeCycleIndex % shiftCycles.length];
 
   // Default to today if null
   let start = dateRange && dateRange[0] ? dayjs(dateRange[0]) : dayjs();
@@ -76,7 +77,7 @@ function generateDashboardData(dateRange, shift, area, customThresholds, activeC
   };
   const areaSeed = areaSeeds[area] || 1;
 
-  // 1. Production Graph (Actual vs Plan strictly mapped to date range)
+  // 1. Production Graph (Actual vs Plan strictly mapped to date range & shift)
   let prodLabels = [];
   let prodActual = [];
   let prodPlan = [];
@@ -90,15 +91,20 @@ function generateDashboardData(dateRange, shift, area, customThresholds, activeC
       : ['23:00', '00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00'];
 
     prodLabels = baseHours;
-    const seed = start.date() + areaSeed * 3 + (shift === 'Shift 2' ? 5 : shift === 'Shift 3' ? 10 : 0);
+    const shiftSeed = shift === 'Shift 1' ? 3 : shift === 'Shift 2' ? 17 : 29;
+    const seed = start.date() + areaSeed * 3 + shiftSeed;
 
-    // Hourly plan set to 20.000 so Y-axis can scale cleanly to 20.000 (with step 5.000)
-    prodPlan = baseHours.map((_, i) => (i === baseHours.length - 1 ? 15000 : 20000));
+    // Hourly plan scaled per shift
+    const basePlanVal = shift === 'Shift 1' ? 20000 : shift === 'Shift 2' ? 18000 : 15000;
+    const lastPlanVal = shift === 'Shift 1' ? 15000 : shift === 'Shift 2' ? 14000 : 12000;
+
+    prodPlan = baseHours.map((_, i) => (i === baseHours.length - 1 ? lastPlanVal : basePlanVal));
     prodActual = baseHours.map((_, i) => {
-      const target = i === baseHours.length - 1 ? 15000 : 20000;
-      const variation = ((seed * 17 + i * 23) % 5) * 500;
-      const cycleBoost = (i === Math.min(activeCycleIndex, baseHours.length - 1)) ? ((activeCycleIndex + 1) * 200) : 0;
-      return Math.min(target, Math.max(14000, target - variation + cycleBoost));
+      const target = i === baseHours.length - 1 ? lastPlanVal : basePlanVal;
+      const variation = ((seed * 17 + i * 23) % 5) * (shift === 'Shift 3' ? 350 : 500);
+      const cycleBoost = (i === Math.min(activeCycleIndex, baseHours.length - 1)) ? ((activeCycleIndex + 1) * 180) : 0;
+      const minVal = Math.round(target * 0.75);
+      return Math.min(target, Math.max(minVal, target - variation + cycleBoost));
     });
   } else {
     // Multi-day selection: each bar represents one day in the date range
@@ -110,15 +116,18 @@ function generateDashboardData(dateRange, shift, area, customThresholds, activeC
         : d.format('DD/MM');
       prodLabels.push(label);
 
-      const daySeed = d.date() + d.month() * 31 + areaSeed * 7 + (shift === 'Shift 2' ? 11 : shift === 'Shift 3' ? 22 : 0);
-      const baseActualPatterns = [150000, 125000, 100000, 140000, 75000, 110000, 130000];
-      const basePlanPatterns = [150000, 150000, 150000, 150000, 100000, 140000, 140000];
+      const shiftMultiplier = shift === 'Shift 1' ? 1.0 : shift === 'Shift 2' ? 0.85 : 0.68;
+      const shiftSeed = shift === 'Shift 1' ? 7 : shift === 'Shift 2' ? 19 : 31;
+      const daySeed = d.date() + d.month() * 31 + areaSeed * 7 + shiftSeed;
 
-      const actVal = baseActualPatterns[i % baseActualPatterns.length] + ((daySeed * 9301 + 49297) % 20000) - 10000 + (i === daysCount - 1 ? activeCycleIndex * 350 : 0);
+      const baseActualPatterns = [150000, 125000, 100000, 140000, 75000, 110000, 130000].map((v) => Math.round(v * shiftMultiplier));
+      const basePlanPatterns = [150000, 150000, 150000, 150000, 100000, 140000, 140000].map((v) => Math.round(v * shiftMultiplier));
+
+      const actVal = baseActualPatterns[i % baseActualPatterns.length] + ((daySeed * 9301 + 49297) % 15000) - 7500 + (i === daysCount - 1 ? activeCycleIndex * 300 : 0);
       const planVal = basePlanPatterns[i % basePlanPatterns.length];
 
-      prodActual.push(Math.max(25000, Math.min(150000, Math.round(actVal / 5000) * 5000)));
-      prodPlan.push(Math.max(50000, Math.min(150000, Math.round(planVal / 5000) * 5000)));
+      prodActual.push(Math.max(15000, Math.min(150000, Math.round(actVal / 5000) * 5000)));
+      prodPlan.push(Math.max(25000, Math.min(150000, Math.round(planVal / 5000) * 5000)));
     }
   }
 
