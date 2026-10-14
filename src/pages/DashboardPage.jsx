@@ -5,10 +5,7 @@ import {
   X,
   Timer,
   Package,
-  CheckCircle2,
-  Play,
-  Pause,
-  Radio
+  CheckCircle2
 } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -688,7 +685,7 @@ export default function DashboardPage({
         padding: 8,
         cornerRadius: 6,
         callbacks: {
-          label: (ctx) => `${ctx.label}: ${ctx.raw} pcs (${Math.round((ctx.raw / (shiftData.countingProduct || 1)) * 100)}%)`
+          label: (ctx) => `${ctx.label}: ${ctx.raw} pcs (${Number((ctx.raw / (shiftData.countingProduct || 1)) * 100).toFixed(1)}%)`
         }
       }
     }
@@ -763,25 +760,6 @@ export default function DashboardPage({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* Realtime Live Cycling Badge (10 Data States) */}
-            <div className="flex items-center gap-2 h-[38px] px-3.5 rounded-lg bg-[#EAF8F1] border border-[#A6E1C4] text-[#00A854] text-xs font-semibold shadow-xs select-none">
-              <span className="relative flex h-2.5 w-2.5">
-                {isLiveActive && (
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00A854] opacity-75"></span>
-                )}
-                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isLiveActive ? 'bg-[#00A854]' : 'bg-gray-400'}`}></span>
-              </span>
-              <span>LIVE • Data {activeCycle + 1}/10</span>
-              <button
-                type="button"
-                onClick={() => setIsLiveActive(!isLiveActive)}
-                className="ml-1 p-1 hover:bg-emerald-100/60 rounded text-[#00A854] transition-colors cursor-pointer"
-                title={isLiveActive ? 'Pause Realtime Stream' : 'Resume Realtime Stream'}
-              >
-                {isLiveActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-
             {/* Shift Select - Height 38px */}
             <div className="w-28 sm:w-32">
               <CustomDropdown
@@ -854,7 +832,7 @@ export default function DashboardPage({
                 Rasio Product OK
               </p>
               <h2 className="text-4xl font-extrabold text-[#1E232F] tracking-tight mt-1.5 transition-all duration-300">
-                {shiftData.rasioProductOk}%
+                {Number(shiftData.rasioProductOk).toFixed(1)}%
               </h2>
             </div>
             <div className="w-12 h-12 rounded-xl bg-[#00A854] text-white flex items-center justify-center flex-shrink-0 shadow-xs">
@@ -1085,7 +1063,7 @@ export default function DashboardPage({
                     </div>
                     <div className="text-right">
                       <span className="text-base font-bold text-[#1E232F]">
-                        {shiftData.rasioProductOk}%
+                        {Number(shiftData.rasioProductOk).toFixed(1)}%
                       </span>
                       <p className="text-xs text-gray-400 font-medium">
                         ({shiftData.okCount.toLocaleString('id-ID')} pcs)
@@ -1100,7 +1078,7 @@ export default function DashboardPage({
                     </div>
                     <div className="text-right">
                       <span className="text-base font-bold text-[#1E232F]">
-                        {100 - shiftData.rasioProductOk}%
+                        {Number(100 - shiftData.rasioProductOk).toFixed(1)}%
                       </span>
                       <p className="text-xs text-gray-400 font-medium">
                         ({shiftData.reworkCount.toLocaleString('id-ID')} pcs)
