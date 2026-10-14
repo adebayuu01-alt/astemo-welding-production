@@ -1,11 +1,14 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import dayjs from 'dayjs';
 import {
   Settings,
   X,
   Timer,
   Package,
-  CheckCircle2
+  CheckCircle2,
+  Play,
+  Pause,
+  Radio
 } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -25,7 +28,12 @@ import CustomDropdown from '../components/CustomDropdown';
 import AntDateRangePicker from '../components/AntDateRangePicker';
 import ModalPortal from '../components/ModalPortal';
 import Toast from '../components/Toast';
-import { SHIFT_OPTIONS, AREA_OPTIONS, WELDING_DASHBOARD_CONFIG } from '../data/mockData';
+import {
+  SHIFT_OPTIONS,
+  AREA_OPTIONS,
+  WELDING_DASHBOARD_CONFIG,
+  REALTIME_CYCLES_10
+} from '../data/mockData';
 
 // Register Chart.js components
 ChartJS.register(
@@ -41,9 +49,10 @@ ChartJS.register(
   Filler
 );
 
-// Function to generate dynamic dashboard data strictly synchronized with the selected Date Range
-function generateDashboardData(dateRange, shift, area, customThresholds) {
+// Function to generate dynamic dashboard data strictly synchronized with the selected Date Range and 10 Realtime Cycles
+function generateDashboardData(dateRange, shift, area, customThresholds, activeCycleIndex = 0) {
   const shiftConfig = WELDING_DASHBOARD_CONFIG[shift] || WELDING_DASHBOARD_CONFIG['Shift 1'];
+  const liveCycle = REALTIME_CYCLES_10[activeCycleIndex % REALTIME_CYCLES_10.length];
 
   // Default to today if null
   let start = dateRange && dateRange[0] ? dayjs(dateRange[0]) : dayjs();
@@ -91,7 +100,8 @@ function generateDashboardData(dateRange, shift, area, customThresholds) {
     prodActual = baseHours.map((_, i) => {
       const target = i === baseHours.length - 1 ? 15000 : 20000;
       const variation = ((seed * 17 + i * 23) % 5) * 500;
-      return Math.min(target, Math.max(14000, target - variation));
+      const cycleBoost = (i === Math.min(activeCycleIndex, baseHours.length - 1)) ? ((activeCycleIndex + 1) * 200) : 0;
+      return Math.min(target, Math.max(14000, target - variation + cycleBoost));
     });
   } else {
     // Multi-day selection: each bar represents one day in the date range
@@ -107,7 +117,7 @@ function generateDashboardData(dateRange, shift, area, customThresholds) {
       const baseActualPatterns = [150000, 125000, 100000, 140000, 75000, 110000, 130000];
       const basePlanPatterns = [150000, 150000, 150000, 150000, 100000, 140000, 140000];
 
-      const actVal = baseActualPatterns[i % baseActualPatterns.length] + ((daySeed * 9301 + 49297) % 20000) - 10000;
+      const actVal = baseActualPatterns[i % baseActualPatterns.length] + ((daySeed * 9301 + 49297) % 20000) - 10000 + (i === daysCount - 1 ? activeCycleIndex * 350 : 0);
       const planVal = basePlanPatterns[i % basePlanPatterns.length];
 
       prodActual.push(Math.max(25000, Math.min(150000, Math.round(actVal / 5000) * 5000)));
@@ -115,63 +125,54 @@ function generateDashboardData(dateRange, shift, area, customThresholds) {
     }
   }
 
-  // 2. Parameter Trends (Ampere & Welding Time strictly aligned to date range)
+  // 2. Parameter Trends (Exactly 10 data points shifting in real-time)
   let paramTimeLabels = [];
   let ampereActual = [];
   let weldingTimeActual = [];
 
   if (daysCount === 1) {
-    paramTimeLabels = shift === 'Shift 1'
-      ? ['07:00:00', '08:00:00', '09:00:00', '10:00:00', '11:00:00', '12:00:00', '13:00:00', '14:00:00', '15:00:00']
-      : shift === 'Shift 2'
-      ? ['15:00:00', '16:00:00', '17:00:00', '18:00:00', '19:00:00', '20:00:00', '21:00:00', '22:00:00', '23:00:00']
-      : ['23:00:00', '00:00:00', '01:00:00', '02:00:00', '03:00:00', '04:00:00', '05:00:00', '06:00:00', '07:00:00'];
-    ampereActual = [25, 45, 68, 72, 70, 75, 88, 52, 65];
-    weldingTimeActual = [880, 930, 990, 1010, 980, 920, 895, 940, 960];
+    paramTimeLabels = liveCycle.timeLabelsLive;
+    ampereActual = liveCycle.ampereLive;
+    weldingTimeActual = liveCycle.weldingTimeLive;
   } else if (daysCount <= 7) {
-    const samplePoints = Math.min(8, Math.max(daysCount, 5));
+    const samplePoints = 10;
     for (let i = 0; i < samplePoints; i++) {
       const dayOffset = Math.floor((i / (samplePoints - 1)) * (daysCount - 1));
       const currentDay = start.add(dayOffset, 'day');
-      const hour = 8 + (i * 2);
+      const hour = 8 + i;
       paramTimeLabels.push(`${currentDay.format('DD/MM')} ${hour.toString().padStart(2, '0')}:00`);
-
-      const seed = currentDay.date() * 13 + i * 7 + areaSeed * 5;
-      const aVal = 55 + ((seed * 19) % 35) - 5;
-      ampereActual.push(Math.max(20, Math.min(95, aVal)));
-
-      const wtVal = 950 + ((seed * 29) % 110) - 40;
-      weldingTimeActual.push(Math.max(850, Math.min(1050, wtVal)));
+      ampereActual.push(liveCycle.ampereLive[i] || 65);
+      weldingTimeActual.push(liveCycle.weldingTimeLive[i] || 950);
     }
   } else {
-    const sampleCount = 8;
+    const sampleCount = 10;
     for (let i = 0; i < sampleCount; i++) {
       const dayOffset = Math.round((i / (sampleCount - 1)) * (daysCount - 1));
       const currentDay = start.add(dayOffset, 'day');
       paramTimeLabels.push(currentDay.format('DD/MM/YY'));
-
-      const seed = currentDay.date() * 17 + i * 5 + areaSeed * 9;
-      const aVal = 60 + ((seed * 23) % 30) - 5;
-      ampereActual.push(Math.max(25, Math.min(95, aVal)));
-
-      const wtVal = 960 + ((seed * 31) % 90) - 30;
-      weldingTimeActual.push(Math.max(870, Math.min(1040, wtVal)));
+      ampereActual.push(liveCycle.ampereLive[i] || 65);
+      weldingTimeActual.push(liveCycle.weldingTimeLive[i] || 950);
     }
   }
 
-  // 3. Totals and KPI Metrics scaled to date range
-  const baseDailyCounting = shiftConfig.countingProduct;
+  // 3. Totals and KPI Metrics scaled to date range with live alternating cycle
+  const baseDailyCounting = liveCycle.countingProduct;
   const totalCounting = daysCount === 1 ? baseDailyCounting : Math.round(baseDailyCounting * (1 + (daysCount - 1) * 0.95));
-  const totalTarget = daysCount === 1 ? shiftConfig.productionTarget : Math.round(shiftConfig.productionTarget * (1 + (daysCount - 1) * 0.95));
+  const totalTarget = daysCount === 1 ? liveCycle.productionTarget : Math.round(liveCycle.productionTarget * (1 + (daysCount - 1) * 0.95));
 
-  const rasioOk = shiftConfig.rasioProductOk;
-  const okPcs = Math.round((totalCounting * rasioOk) / 100);
+  const rasioOk = liveCycle.rasioProductOk;
+  const okPcs = daysCount === 1 ? liveCycle.okCount : Math.round((totalCounting * rasioOk) / 100);
   const reworkPcs = totalCounting - okPcs;
 
   return {
     ...shiftConfig,
+    currentOee: liveCycle.currentOee,
+    availability: liveCycle.availability,
+    performance: liveCycle.performance,
+    quality: liveCycle.quality,
     countingProduct: totalCounting,
     productionTarget: totalTarget,
+    rasioProductOk: rasioOk,
     okCount: okPcs,
     reworkCount: reworkPcs,
     productionGraph: {
@@ -230,10 +231,22 @@ export default function DashboardPage({ areas = [] }) {
 
   const [toast, setToast] = useState(null);
 
-  // Dynamic Dashboard Data synchronized with Date Range, Shift, Area, and Thresholds
+  // Realtime live cycling (10 alternating data states every 2.5 seconds)
+  const [activeCycle, setActiveCycle] = useState(0);
+  const [isLiveActive, setIsLiveActive] = useState(true);
+
+  useEffect(() => {
+    if (!isLiveActive) return;
+    const timer = setInterval(() => {
+      setActiveCycle((prev) => (prev + 1) % 10);
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [isLiveActive]);
+
+  // Dynamic Dashboard Data synchronized with Date Range, Shift, Area, Thresholds, and Realtime Cycle
   const shiftData = useMemo(() => {
-    return generateDashboardData(dateRange, selectedShift, selectedArea, customThresholds);
-  }, [dateRange, selectedShift, selectedArea, customThresholds]);
+    return generateDashboardData(dateRange, selectedShift, selectedArea, customThresholds, activeCycle);
+  }, [dateRange, selectedShift, selectedArea, customThresholds, activeCycle]);
 
   // Dynamic Y-axis scale strictly matching the current Plan peak so it's never too far above
   const prodYScale = useMemo(() => {
@@ -718,6 +731,25 @@ export default function DashboardPage({ areas = [] }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {/* Realtime Live Cycling Badge (10 Data States) */}
+            <div className="flex items-center gap-2 h-[38px] px-3.5 rounded-lg bg-[#EAF8F1] border border-[#A6E1C4] text-[#00A854] text-xs font-semibold shadow-xs select-none">
+              <span className="relative flex h-2.5 w-2.5">
+                {isLiveActive && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00A854] opacity-75"></span>
+                )}
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isLiveActive ? 'bg-[#00A854]' : 'bg-gray-400'}`}></span>
+              </span>
+              <span>LIVE • Data {activeCycle + 1}/10</span>
+              <button
+                type="button"
+                onClick={() => setIsLiveActive(!isLiveActive)}
+                className="ml-1 p-1 hover:bg-emerald-100/60 rounded text-[#00A854] transition-colors cursor-pointer"
+                title={isLiveActive ? 'Pause Realtime Stream' : 'Resume Realtime Stream'}
+              >
+                {isLiveActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
             {/* Shift Select - Height 38px */}
             <div className="w-28 sm:w-32">
               <CustomDropdown
